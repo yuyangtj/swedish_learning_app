@@ -62,8 +62,8 @@ Keep it natural and appropriate for language learners.`
   const text = response.text?.trim() || ''
 
   // Parse the structured response
-  const swMatch = text.match(/Swedish:\s*(.+?)(?:\n|$)/s)
-  const enMatch = text.match(/English:\s*(.+?)(?:\n|$)/s)
+  const swMatch = text.match(/Swedish:\s*([\s\S]+?)(?:\nEnglish:|$)/)
+  const enMatch = text.match(/English:\s*([\s\S]+)$/)
 
   return {
     swedish: swMatch?.[1]?.trim() || text,

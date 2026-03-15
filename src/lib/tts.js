@@ -1,3 +1,21 @@
+// On-device TTS — returns a Promise that resolves when speech ends
+export function speakOnDevicePromise(text, playbackRate = 1.0) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) { resolve(); return }
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    utterance.lang = 'sv-SE'
+    utterance.rate = 0.85 * playbackRate
+    utterance.pitch = 1.0
+    const voices = window.speechSynthesis.getVoices()
+    const svVoice = voices.find(v => v.lang.startsWith('sv'))
+    if (svVoice) utterance.voice = svVoice
+    utterance.onend = () => resolve()
+    utterance.onerror = () => resolve()
+    window.speechSynthesis.speak(utterance)
+  })
+}
+
 // On-device TTS via Web Speech API
 export function speakOnDevice(text, playbackRate = 1.0) {
   if (!window.speechSynthesis) {

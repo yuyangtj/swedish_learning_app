@@ -204,7 +204,7 @@ export default function Generate() {
 
       {mode === 'text' && result && (
         <div className="result-card">
-          <div className="result-swedish">{result.swedish}</div>
+          <div className="result-swedish" style={{ whiteSpace: 'pre-wrap' }}>{result.swedish}</div>
           {result.english && <div className="result-english">{result.english}</div>}
           <ResultActions
             ttsStatus={ttsStatus} saving={saving} saved={saved} saveLabel={saveLabel}

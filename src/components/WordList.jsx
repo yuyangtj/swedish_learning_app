@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { getWords, addWord, deleteWord, updateWordSrs, updateWord, updateWordAudio } from '../lib/db.js'
-import { speakOnDevice, getGeminiAudioBlob, getGeminiDialogAudioBlob } from '../lib/tts.js'
+import { speakOnDevice, speakOnDevicePromise, getGeminiAudioBlob, getGeminiDialogAudioBlob } from '../lib/tts.js'
 import { getSettings, getStreak, recordReview } from '../lib/storage.js'
 import { isDue, sortBySrs, srsLabel, levelLabel, daysUntilDue, SRS_MAX_LEVEL } from '../lib/srs.js'
-import { Play, Volume2, Square, Trash2, ThumbsUp, RotateCcw, Eye, ArrowLeft, Check, Search, X, Flame, Pencil } from 'lucide-react'
+import { Play, Volume2, Square, Trash2, ThumbsUp, RotateCcw, Eye, ArrowLeft, Check, Search, X, Flame, Pencil, ListMusic, SkipBack, SkipForward, Pause } from 'lucide-react'
 
 export default function WordList() {
   const [words, setWords] = useState([])
@@ -15,7 +15,24 @@ export default function WordList() {
   const [reviewMode, setReviewMode] = useState(false)
   const [search, setSearch] = useState('')
   const [streak, setStreak] = useState(() => getStreak().count)
+  const [playlist, setPlaylist] = useState(null) // null = off, array = active
+  const [visibleCount, setVisibleCount] = useState(30)
+  const sentinelRef = useRef(null)
   const audioRef = useRef(null)
+
+  // Reset visible count when search changes
+  useEffect(() => { setVisibleCount(30) }, [search])
+
+  // Auto-load more when sentinel enters viewport
+  useEffect(() => {
+    const el = sentinelRef.current
+    if (!el) return
+    const observer = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) setVisibleCount(n => n + 20)
+    }, { rootMargin: '200px' })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [sentinelRef.current])
 
   useEffect(() => {
     getWords()
@@ -204,6 +221,19 @@ export default function WordList() {
         </div>
       )}
 
+      {!loading && words.length > 0 && !search && (
+        <div className="playlist-row">
+          <button className="btn btn-secondary playlist-btn" onClick={() => setPlaylist(words)}>
+            <ListMusic size={15} /> Play All
+          </button>
+          {dueWords.length > 0 && (
+            <button className="btn btn-secondary playlist-btn" onClick={() => setPlaylist(dueWords)}>
+              <ListMusic size={15} /> Play Due ({dueWords.length})
+            </button>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div className="empty">Loading...</div>
       ) : words.length === 0 ? (
@@ -220,17 +250,29 @@ export default function WordList() {
         if (filtered.length === 0) {
           return <div className="empty">No results for "{search.trim()}"</div>
         }
+        const visible = filtered.slice(0, visibleCount)
         return (
-        <ul className="word-list">
-          {filtered.map(w => w.type === 'dialog'
-            ? <DialogCard key={w.id} word={w} speaking={speaking}
-                onSpeak={handleSpeak} onDelete={handleDelete} onRate={handleRate} />
-            : <WordCard key={w.id} word={w} speaking={speaking}
-                onSpeak={handleSpeak} onDelete={handleDelete} onRate={handleRate} onEdit={handleEdit} />
+        <>
+          <ul className="word-list">
+            {visible.map(w => w.type === 'dialog'
+              ? <DialogCard key={w.id} word={w} speaking={speaking}
+                  onSpeak={handleSpeak} onDelete={handleDelete} onRate={handleRate} />
+              : <WordCard key={w.id} word={w} speaking={speaking}
+                  onSpeak={handleSpeak} onDelete={handleDelete} onRate={handleRate} onEdit={handleEdit} />
+            )}
+          </ul>
+          {visible.length < filtered.length && (
+            <div ref={sentinelRef} className="load-more-sentinel">
+              Loading more…
+            </div>
           )}
-        </ul>
+        </>
         )
       })()}
+
+      {playlist && (
+        <PlaylistBar words={playlist} onStop={() => setPlaylist(null)} />
+      )}
     </div>
   )
 }
@@ -570,5 +612,114 @@ function DialogCard({ word, speaking, onSpeak, onDelete, onRate }) {
         <button className="btn btn-icon btn-danger" onClick={() => onDelete(word)} title="Delete"><Trash2 size={15} /></button>
       </div>
     </li>
+  )
+}
+
+// ── Playlist Player ──────────────────────────────────────────────────────────
+
+function PlaylistBar({ words, onStop }) {
+  const [index, setIndex] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [playKey, setPlayKey] = useState(0)
+  const audioRef = useRef(null)
+  const pausedRef = useRef(false)
+
+  const word = words[index]
+
+  function stopCurrent() {
+    if (audioRef.current) {
+      audioRef.current.onended = null
+      audioRef.current.pause()
+      audioRef.current = null
+    }
+    window.speechSynthesis?.cancel()
+  }
+
+  function advance() {
+    setIndex(i => {
+      const next = i + 1
+      if (next >= words.length) { onStop(); return i }
+      return next
+    })
+  }
+
+  useEffect(() => {
+    if (pausedRef.current || !word) return
+    const settings = getSettings()
+    const rate = settings.playbackRate ?? 1.0
+    let cancelled = false
+
+    async function play() {
+      if (word.audio_url) {
+        const audio = new Audio(word.audio_url)
+        audio.playbackRate = rate
+        audioRef.current = audio
+        audio.onended = () => { audioRef.current = null; if (!cancelled) advance() }
+        try { await audio.play() } catch { if (!cancelled) advance() }
+      } else {
+        const text = word.type === 'dialog'
+          ? (word.lines || []).map(l => l.text).join('. ')
+          : word.swedish
+        await speakOnDevicePromise(text, rate)
+        if (!cancelled) advance()
+      }
+    }
+
+    play()
+    return () => { cancelled = true; stopCurrent() }
+  }, [index, playKey])
+
+  function togglePause() {
+    if (paused) {
+      pausedRef.current = false
+      setPaused(false)
+      if (audioRef.current) {
+        audioRef.current.play() // resume Audio from exact position
+      } else {
+        setPlayKey(k => k + 1) // TTS: restart current word
+      }
+    } else {
+      pausedRef.current = true
+      setPaused(true)
+      if (audioRef.current) {
+        audioRef.current.pause() // keep ref so we can resume
+      } else {
+        window.speechSynthesis?.pause()
+      }
+    }
+  }
+
+  function prev() {
+    stopCurrent()
+    setIndex(i => Math.max(0, i - 1))
+    if (paused) { pausedRef.current = false; setPaused(false) }
+  }
+
+  function next() {
+    stopCurrent()
+    if (index + 1 >= words.length) { onStop(); return }
+    setIndex(i => i + 1)
+    if (paused) { pausedRef.current = false; setPaused(false) }
+  }
+
+  const label = word
+    ? (word.type === 'dialog' ? word.lines?.[0]?.text : word.swedish) ?? ''
+    : ''
+
+  return (
+    <div className="playlist-bar">
+      <div className="playlist-controls">
+        <button className="playlist-ctrl" onClick={prev} disabled={index === 0} title="Previous"><SkipBack size={18} /></button>
+        <button className="playlist-ctrl playlist-ctrl-main" onClick={togglePause} title={paused ? 'Resume' : 'Pause'}>
+          {paused ? <Play size={20} /> : <Pause size={20} />}
+        </button>
+        <button className="playlist-ctrl" onClick={next} title="Next"><SkipForward size={18} /></button>
+      </div>
+      <div className="playlist-info">
+        <span className="playlist-text">{label.length > 60 ? label.slice(0, 60) + '…' : label}</span>
+        <span className="playlist-progress">{index + 1} / {words.length}</span>
+      </div>
+      <button className="playlist-ctrl playlist-stop" onClick={onStop} title="Stop"><X size={18} /></button>
+    </div>
   )
 }
