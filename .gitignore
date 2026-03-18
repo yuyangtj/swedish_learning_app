@@ -5,3 +5,4 @@ dist/
 .env.local.example
 .claude/
 .firebase/
+agent/service-account.json
