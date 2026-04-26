@@ -1,6 +1,7 @@
 import {
   collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, updateDoc, getDoc, setDoc
 } from 'firebase/firestore'
+
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage'
 import { auth, db, storage } from './firebase.js'
 import { initSrs, nextSrs } from './srs.js'
@@ -14,6 +15,39 @@ function wordsCol() {
 
 function userDoc() {
   return doc(db, 'users', auth.currentUser.uid)
+}
+
+function mistakesCol() {
+  const uid = auth.currentUser?.uid
+  if (!uid) throw new Error('not_authenticated')
+  return collection(db, 'users', uid, 'mistakes')
+}
+
+export async function saveMistakes(corrections, context) {
+  if (!corrections?.length) return
+  const col = mistakesCol()
+  await Promise.all(corrections.map(c => addDoc(col, {
+    original:    c.original,
+    corrected:   c.corrected,
+    explanation: c.explanation,
+    severity:    c.severity,
+    context:     context || '',
+    createdAt:   new Date().toISOString()
+  })))
+}
+
+export async function getMistakes() {
+  // Sort client-side to avoid Firestore index requirements on new subcollections
+  const snap = await getDocs(mistakesCol())
+  return snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+}
+
+export async function deleteMistake(id) {
+  const uid = auth.currentUser?.uid
+  if (!uid) throw new Error('not_authenticated')
+  await deleteDoc(doc(db, 'users', uid, 'mistakes', id))
 }
 
 export async function loadCloudSettings() {
