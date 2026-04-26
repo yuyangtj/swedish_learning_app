@@ -95,13 +95,37 @@ npm test          # watch mode
 npm run test:run  # single run
 ```
 
-### Deploy
+### Deploy to Firebase
+
+**First-time setup:**
+
+1. Install the Firebase CLI:
+   ```bash
+   npm install -g firebase-tools
+   ```
+
+2. Log in:
+   ```bash
+   firebase login
+   ```
+
+3. Link the project:
+   ```bash
+   firebase use your_project_id
+   ```
+
+**Deploy:**
 
 ```bash
 npm run deploy
 ```
 
-This builds the app and deploys hosting + Firestore rules to Firebase in one step.
+This runs `vite build` then deploys hosting and Firestore security rules in one step.
+
+To deploy hosting only (skip rules):
+```bash
+vite build && firebase deploy --only hosting
+```
 
 ## Firestore Data Model
 
