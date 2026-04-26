@@ -17,7 +17,8 @@ export function speakOnDevicePromise(text, playbackRate = 1.0) {
 }
 
 // On-device TTS via Web Speech API
-export function speakOnDevice(text, playbackRate = 1.0) {
+// preferMale: when true, picks a male Swedish voice if available
+export function speakOnDevice(text, playbackRate = 1.0, preferMale = false) {
   if (!window.speechSynthesis) {
     alert('Speech synthesis not supported in this browser.')
     return
@@ -28,16 +29,20 @@ export function speakOnDevice(text, playbackRate = 1.0) {
   utterance.rate = 0.85 * playbackRate
   utterance.pitch = 1.0
 
-  // Try to find a Swedish voice
   const voices = window.speechSynthesis.getVoices()
-  const svVoice = voices.find(v => v.lang.startsWith('sv'))
-  if (svVoice) utterance.voice = svVoice
+  const svVoices = voices.filter(v => v.lang.startsWith('sv'))
+  if (preferMale) {
+    const male = svVoices.find(v => /male|man|oskar|anders|erik/i.test(v.name))
+    utterance.voice = male ?? svVoices[0] ?? null
+  } else {
+    utterance.voice = svVoices[0] ?? null
+  }
 
   window.speechSynthesis.speak(utterance)
 }
 
 // Gemini TTS — fetches audio and returns a WAV Blob
-export async function getGeminiAudioBlob(text, apiKey) {
+export async function getGeminiAudioBlob(text, apiKey, voiceName = 'Kore') {
   const { GoogleGenAI } = await import('@google/genai')
   const ai = new GoogleGenAI({ apiKey })
 
@@ -48,7 +53,7 @@ export async function getGeminiAudioBlob(text, apiKey) {
       responseModalities: ['AUDIO'],
       speechConfig: {
         voiceConfig: {
-          prebuiltVoiceConfig: { voiceName: 'Kore' }
+          prebuiltVoiceConfig: { voiceName }
         }
       }
     }
@@ -92,8 +97,8 @@ export async function getGeminiDialogAudioBlob(dialogText, apiKey) {
 }
 
 // Play Gemini TTS audio
-export async function speakGemini(text, apiKey, playbackRate = 1.0) {
-  const blob = await getGeminiAudioBlob(text, apiKey)
+export async function speakGemini(text, apiKey, playbackRate = 1.0, voiceName = 'Kore') {
+  const blob = await getGeminiAudioBlob(text, apiKey, voiceName)
   const url = URL.createObjectURL(blob)
   const audio = new Audio(url)
   audio.playbackRate = playbackRate

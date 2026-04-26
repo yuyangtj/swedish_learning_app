@@ -5,11 +5,13 @@ import Login from './components/Login.jsx'
 import WordList from './components/WordList.jsx'
 import Generate from './components/Generate.jsx'
 import Settings from './components/Settings.jsx'
-import { BookOpen, Sparkles, SlidersHorizontal, Sun, Moon } from 'lucide-react'
+import Coach from './components/Coach.jsx'
+import { BookOpen, Sparkles, SlidersHorizontal, Sun, Moon, GraduationCap } from 'lucide-react'
 
 const TABS = [
   { id: 'words', label: 'My Words', Icon: BookOpen },
   { id: 'generate', label: 'Generate', Icon: Sparkles },
+  { id: 'coach', label: 'Coach', Icon: GraduationCap },
   { id: 'settings', label: 'Settings', Icon: SlidersHorizontal }
 ]
 
@@ -43,6 +45,7 @@ export default function App() {
       <main className="main">
         {tab === 'words' && <WordList />}
         {tab === 'generate' && <Generate />}
+        {tab === 'coach' && <Coach setTab={setTab} />}
         {tab === 'settings' && <Settings />}
       </main>
 
