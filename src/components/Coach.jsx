@@ -267,15 +267,40 @@ export default function Coach({ setTab }) {
 
       // Run Web Speech API in parallel for an instant local transcript
       let localTranscript = ''
+      let interimTranscript = ''
+      let restartCount = 0
+      const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition()
         recognition.lang = 'sv-SE'
-        recognition.interimResults = false
-        recognition.continuous = true
+        recognition.interimResults = true
+        recognition.continuous = !isMobile  // Android Chrome struggles with continuous=true
         recognition.onresult = (e) => {
+          interimTranscript = ''
           for (const result of e.results) {
-            if (result.isFinal) localTranscript += result[0].transcript + ' '
+            if (result.isFinal) {
+              localTranscript += result[0].transcript + ' '
+            } else {
+              interimTranscript += result[0].transcript
+            }
+          }
+        }
+        recognition.onerror = (e) => {
+          // Log for debugging but don't block audio submission
+          console.warn('SpeechRecognition error:', e.error)
+        }
+        recognition.onnomatch = () => {
+          console.warn('SpeechRecognition: no match')
+        }
+        recognition.onend = () => {
+          // On mobile, recognition often ends after one utterance.
+          // Restart once if we're still recording and haven't restarted yet.
+          if (isMobile && mediaRecorderRef.current?.state === 'recording' && restartCount < 1) {
+            restartCount++
+            setTimeout(() => {
+              try { recognition.start() } catch {}
+            }, 150)
           }
         }
         recognition.start()
@@ -295,7 +320,8 @@ export default function Coach({ setTab }) {
         if (blob.size < 1000) return  // too short, ignore
 
         const msgId = Date.now()
-        const localText = localTranscript.trim() || null
+        // Fall back to interim transcript if no final results were captured
+        const localText = localTranscript.trim() || interimTranscript.trim() || null
 
         // Show local transcript immediately (no waiting for Gemini)
         setMessages(prev => [...prev, {
